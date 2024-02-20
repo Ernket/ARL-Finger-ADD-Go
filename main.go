@@ -43,6 +43,7 @@ func customUsage() {
 }
 
 func main() {
+	flag.Usage = customUsage
 	flag.Parse()
 	loginURL := *loginURL
 	loginName := *loginName
