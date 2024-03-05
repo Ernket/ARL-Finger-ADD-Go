@@ -6,21 +6,47 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v2"
 )
 
+/*
+删除所有指纹这一个操作其实是从finger_num开始的
+添加指纹是从make_file开始
+*/
+
+// 定义与 YAML 文件匹配的结构体
+type ARLConfig struct {
+	ARLConfig struct {
+		URL      string `yaml:"url"`
+		Username string `yaml:"username"`
+		Password string `yaml:"password"`
+		Threads  int    `yaml:"threads"`
+	} `yaml:"arl_config"`
+}
+
+/*
 var (
 	loginURL       = flag.String("url", "", "URL地址")
 	loginName      = flag.String("username", "", "用户名")
 	loginPassword  = flag.String("password", "", "密码")
 	thread_num     = flag.Int("thread", 10, "线程数")
 	del_all_finger = flag.Bool("n", false, "删除所有指纹")
+)
+*/
+
+var (
+	//searchName      = flag.String("s", "", "搜索的项目名")
+	del_all_finger  = flag.Bool("d", false, "删除所有指纹")
+	add_file_finger = flag.Bool("a", false, "添加finger.json文件中的指纹")
 )
 
 // 登录需要用到的头信息
@@ -37,7 +63,7 @@ var client = createClient()
 
 // 自定义帮助信息
 func customUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s -url=\"https://x.x.x.x\" -username=\"xxx\" -password=\"xxxx\" [-thread=10|-n=\"true\"]\n", filepath.Base(os.Args[0]))
+	fmt.Fprintf(os.Stderr, "Usage: %s [-d|-a]\n", filepath.Base(os.Args[0]))
 	fmt.Fprintf(os.Stderr, "选项:\n")
 	flag.PrintDefaults()
 }
@@ -45,16 +71,36 @@ func customUsage() {
 func main() {
 	flag.Usage = customUsage
 	flag.Parse()
-	loginURL := *loginURL
-	loginName := *loginName
-	loginPassword := *loginPassword
 
-	// 检查必要的参数是否已提供
-	if loginURL == "" || loginName == "" || loginPassword == "" {
-		flag.Usage() // 如果参数缺失，显示帮助信息
-		fmt.Println("All of -url, -username, and -password are required.")
-		return
+	/*
+		flag.Usage = customUsage
+		flag.Parse()
+		loginURL := *loginURL
+		loginName := *loginName
+		loginPassword := *loginPassword
+
+		// 检查必要的参数是否已提供
+		if loginURL == "" || loginName == "" || loginPassword == "" {
+			flag.Usage() // 如果参数缺失，显示帮助信息
+			fmt.Println("All of -url, -username, and -password are required.")
+			return
+		}
+	*/
+	yamlData, err := os.ReadFile("config.yaml")
+	if err != nil {
+		log.Fatalf("读取文件失败: %v", err)
 	}
+	// 解析 YAML 文件
+	var config ARLConfig
+	err = yaml.Unmarshal(yamlData, &config)
+	if err != nil {
+		log.Fatalf("解析配置文件失败: %v", err)
+	}
+	loginURL := config.ARLConfig.URL
+	fmt.Printf("API url: %s\n", loginURL)
+	loginName := config.ARLConfig.Username
+	loginPassword := config.ARLConfig.Password
+	thread_num := config.ARLConfig.Threads
 
 	// 登录
 	token, err := login(loginURL, loginName, loginPassword)
@@ -66,65 +112,17 @@ func main() {
 
 	// 登录成功后的token写到等会要用的头部
 	headers["Token"] = token
+
+	// 这部分的功能是删除所有指纹
 	if *del_all_finger {
 		finger_num(loginURL)
 		return
 	}
 
-	// 创建信号量
-	semaphore := make(chan struct{}, *thread_num)
-	var wg sync.WaitGroup
-	// 读取JSON文件并解析内容
-	file, err := ioutil.ReadFile("./finger.json")
-	if err != nil {
-		fmt.Println("Error reading JSON file:", err)
-		return
+	if *add_file_finger {
+		make_file(loginURL, thread_num)
 	}
-	// 解析JSON文件
-	var loadDict map[string]interface{}
-	err = json.Unmarshal(file, &loadDict)
-	if err != nil {
-		fmt.Println("Error parsing JSON:", err)
-		return
-	}
-	// 根据JSON中的规则添加指纹
-	for _, finger := range loadDict["fingerprint"].([]interface{}) {
-		wg.Add(1) // 增加等待的线程数
-		go func(finger interface{}) {
-			semaphore <- struct{}{} // 获取信号量
-			defer func() {
-				<-semaphore // 释放
-				wg.Done()   // 完成一个线程
-			}()
-			// 处理finger.json中的数据
-			fingerMap := finger.(map[string]interface{})
-			name := fingerMap["cms"].(string)
-			method := fingerMap["method"].(string)
-			location := fingerMap["location"].(string)
-			keywordInterface := fingerMap["keyword"].([]interface{})
-			keywordSlice := make([]string, len(keywordInterface))
-			for i, v := range keywordInterface {
-				keywordSlice[i] = v.(string)
-			}
-			var rule string
-			if method == "keyword" {
 
-				if location == "body" {
-					rule = fmt.Sprintf("body=\"%s\"", strings.Join(keywordSlice, "\",\""))
-				} else if location == "title" {
-					rule = fmt.Sprintf("title=\"%s\"", strings.Join(keywordSlice, "\",\""))
-				} else if location == "header" {
-					rule = fmt.Sprintf("header=\"%s\"", strings.Join(keywordSlice, "\",\""))
-				}
-
-			} else if method == "icon_hash" {
-				rule = fmt.Sprintf("icon_hash=\"%s\"", strings.Join(keywordSlice, "\",\""))
-			}
-
-			addFinger(name, rule, loginURL) // 调用addFinger函数写入指纹到ARL
-		}(finger)
-	}
-	wg.Wait() // 等待所有线程完成
 }
 
 func addFinger(name, rule, url string) {
@@ -247,7 +245,7 @@ func finger_id(url string, page_num int) ([]interface{}, bool, error) {
 	}
 	defer resp.Body.Close()
 	// 读取响应体
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, true, fmt.Errorf("读取响应失败:", err)
 	}
@@ -296,7 +294,7 @@ func login(url, username, password string) (string, error) {
 	}
 	// 执行defer语句，确保在函数返回之前关闭响应体
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("Error reading response body: %v", err)
 	}
@@ -335,4 +333,60 @@ func createClient() *http.Client {
 		Jar:       jar,
 		Transport: tr,
 	}
+}
+func make_file(loginURL string, thread_num int) {
+	// 创建信号量
+	semaphore := make(chan struct{}, thread_num)
+	var wg sync.WaitGroup
+	// 读取JSON文件并解析内容
+	file, err := os.ReadFile("./finger.json")
+	if err != nil {
+		fmt.Println("Error reading JSON file:", err)
+		return
+	}
+	// 解析JSON文件
+	var loadDict map[string]interface{}
+	err = json.Unmarshal(file, &loadDict)
+	if err != nil {
+		fmt.Println("Error parsing JSON:", err)
+		return
+	}
+	// 根据JSON中的规则添加指纹
+	for _, finger := range loadDict["fingerprint"].([]interface{}) {
+		wg.Add(1) // 增加等待的线程数
+		go func(finger interface{}) {
+			semaphore <- struct{}{} // 获取信号量
+			defer func() {
+				<-semaphore // 释放
+				wg.Done()   // 完成一个线程
+			}()
+			// 处理finger.json中的数据
+			fingerMap := finger.(map[string]interface{})
+			name := fingerMap["cms"].(string)
+			method := fingerMap["method"].(string)
+			location := fingerMap["location"].(string)
+			keywordInterface := fingerMap["keyword"].([]interface{})
+			keywordSlice := make([]string, len(keywordInterface))
+			for i, v := range keywordInterface {
+				keywordSlice[i] = v.(string)
+			}
+			var rule string
+			if method == "keyword" {
+
+				if location == "body" {
+					rule = fmt.Sprintf("body=\"%s\"", strings.Join(keywordSlice, "\",\""))
+				} else if location == "title" {
+					rule = fmt.Sprintf("title=\"%s\"", strings.Join(keywordSlice, "\",\""))
+				} else if location == "header" {
+					rule = fmt.Sprintf("header=\"%s\"", strings.Join(keywordSlice, "\",\""))
+				}
+
+			} else if method == "icon_hash" {
+				rule = fmt.Sprintf("icon_hash=\"%s\"", strings.Join(keywordSlice, "\",\""))
+			}
+
+			addFinger(name, rule, loginURL) // 调用addFinger函数写入指纹到ARL
+		}(finger)
+	}
+	wg.Wait() // 等待所有线程完成
 }
