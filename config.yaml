@@ -1,0 +1,5 @@
+arl_config:
+  url: https://x.x.x.x:5003/
+  username: xxx
+  password: xxx
+  threads: 20
