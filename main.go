@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ type ARLConfig struct {
 		Username string `yaml:"username"`
 		Password string `yaml:"password"`
 		Threads  int    `yaml:"threads"`
+		Api_key  string `yaml:"api_key"`
 	} `yaml:"arl_config"`
 }
 
@@ -45,8 +47,9 @@ var (
 
 var (
 	//searchName      = flag.String("s", "", "搜索的项目名")
-	del_all_finger  = flag.Bool("d", false, "删除所有指纹")
-	add_file_finger = flag.Bool("a", false, "添加finger.json文件中的指纹")
+	del_all_finger   = flag.Bool("d", false, "删除所有指纹")
+	add_file_finger  = flag.Bool("a", false, "添加finger.json文件中的指纹")
+	search_task_name = flag.String("s", "", "查询的任务名称")
 )
 
 // 登录需要用到的头信息
@@ -71,6 +74,9 @@ func customUsage() {
 func main() {
 	flag.Usage = customUsage
 	flag.Parse()
+
+	// 检查必要的参数是否已提供
+	search_task_name := *search_task_name
 
 	/*
 		flag.Usage = customUsage
@@ -98,24 +104,29 @@ func main() {
 	}
 	loginURL := config.ARLConfig.URL
 	fmt.Printf("API url: %s\n", loginURL)
-	loginName := config.ARLConfig.Username
-	loginPassword := config.ARLConfig.Password
+	api_key := config.ARLConfig.Api_key
 	thread_num := config.ARLConfig.Threads
+	if api_key != "" {
+		headers["Token"] = api_key
+	} else {
+		loginName := config.ARLConfig.Username
+		loginPassword := config.ARLConfig.Password
 
-	// 登录
-	token, err := login(loginURL, loginName, loginPassword)
-	if err != nil {
-		fmt.Println("Login failed:", err)
-		return
+		// 登录
+		token, err := login(loginURL, loginName, loginPassword)
+		if err != nil {
+			fmt.Println("Login failed:", err)
+			return
+		}
+		fmt.Println("[+] Login Success!!")
+
+		// 登录成功后的token写到等会要用的头部
+		headers["Token"] = token
 	}
-	fmt.Println("[+] Login Success!!")
-
-	// 登录成功后的token写到等会要用的头部
-	headers["Token"] = token
-
 	// 这部分的功能是删除所有指纹
 	if *del_all_finger {
-		finger_num(loginURL)
+		taskType := "delFinger"
+		get_all_item(loginURL, taskType, "")
 		return
 	}
 
@@ -123,6 +134,12 @@ func main() {
 		make_file(loginURL, thread_num)
 	}
 
+	if search_task_name != "" {
+		taskType := "exportData"
+		search_task_name = url.QueryEscape(search_task_name)
+		get_all_item(loginURL, taskType, search_task_name)
+		return
+	}
 }
 
 func addFinger(name, rule, url string) {
@@ -150,11 +167,22 @@ func addFinger(name, rule, url string) {
 		return
 	}
 	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Errorf("读取响应失败:", err)
+	}
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	// fmt.Println(string(body))
+	// 获取code,判断是否为200
+	check_code, _ := result["code"].(float64)
+
 	// 打印响应内容
-	if resp.StatusCode == 200 {
+	if int(check_code) == 200 {
 		fmt.Printf("Add: [+] %s\n", dataJSON)
 	} else {
-		fmt.Printf("请求失败，状态码：%d\n", resp.StatusCode)
+		error_msg := result["message"].(string)
+		fmt.Printf("请求失败，状态码：%d  错误信息：%s\n", int(check_code), error_msg)
 	}
 }
 func delFinger(url string, allIDs []string) {
@@ -194,12 +222,12 @@ func delFinger(url string, allIDs []string) {
 	fmt.Println("[+] 所有指纹已删除")
 }
 
-func finger_num(url string) {
+func get_all_item(url string, taskType string, search_task_name string) {
 	page_num := 1
 	// 存储id
 	var allIDs []string
 	for {
-		one_item, check_for, err := finger_id(url, page_num)
+		one_item, check_for, err := get_one_id(url, page_num, taskType, search_task_name)
 		if err != nil {
 			fmt.Println("发生报错: ", err)
 			return
@@ -223,12 +251,26 @@ func finger_num(url string) {
 		page_num++
 	}
 	fmt.Println("当前获取的id数：", len(allIDs))
-	delFinger(url, allIDs)
+	if taskType == "delFinger" {
+		delFinger(url, allIDs)
+
+	} else if taskType == "exportData" {
+		exportSite(url, allIDs)
+		return
+	}
+
 }
 
-func finger_id(url string, page_num int) ([]interface{}, bool, error) {
+func get_one_id(url string, page_num int, taskType string, search_task_name string) ([]interface{}, bool, error) {
+
 	page_size := 500
-	url = fmt.Sprintf("%sapi/fingerprint/?page=%d&size=%d&order_name=update_date", url, page_num, page_size)
+	// 判断任务类型
+	if taskType == "delFinger" {
+		url = fmt.Sprintf("%sapi/fingerprint/?page=%d&size=%d&order_name=update_date", url, page_num, page_size)
+
+	} else if taskType == "exportData" {
+		url = fmt.Sprintf("%sapi/task/?page=%d&size=%d&status=done&name=%s", url, page_num, page_size, search_task_name)
+	}
 	// 创建一个HTTP请求
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -265,7 +307,12 @@ func finger_id(url string, page_num int) ([]interface{}, bool, error) {
 		return nil, true, fmt.Errorf("Error asserting items field as []interface{}:")
 	}
 	idCount := len(items)
-	fmt.Println("获取到了", idCount, "条指纹")
+	if taskType == "delFinger" {
+		fmt.Println("获取到了", idCount, "条指纹")
+	} else if taskType == "exportData" {
+		fmt.Println("获取到了", idCount, "条任务id")
+	}
+
 	if idCount < page_size {
 		return items, false, nil
 	}
@@ -366,27 +413,104 @@ func make_file(loginURL string, thread_num int) {
 			method := fingerMap["method"].(string)
 			location := fingerMap["location"].(string)
 			keywordInterface := fingerMap["keyword"].([]interface{})
-			keywordSlice := make([]string, len(keywordInterface))
-			for i, v := range keywordInterface {
-				keywordSlice[i] = v.(string)
-			}
-			var rule string
-			if method == "keyword" {
+			// keywordSlice := make([]string, len(keywordInterface))
 
-				if location == "body" {
-					rule = fmt.Sprintf("body=\"%s\"", strings.Join(keywordSlice, "\",\""))
-				} else if location == "title" {
-					rule = fmt.Sprintf("title=\"%s\"", strings.Join(keywordSlice, "\",\""))
-				} else if location == "header" {
-					rule = fmt.Sprintf("header=\"%s\"", strings.Join(keywordSlice, "\",\""))
+			var rule string
+			for _, v := range keywordInterface {
+				replacedString := strings.ReplaceAll(v.(string), "\"", "\\\"")
+				replacedString = strings.ReplaceAll(replacedString, "\n", "\\n")
+				replacedString = strings.ReplaceAll(replacedString, "\n", "\\n")
+				replacedString = strings.ReplaceAll(replacedString, "\t", "\\t")
+				replacedString = strings.ReplaceAll(replacedString, "\t", "\\t")
+
+				fmt.Println(replacedString)
+				// keywordSlice[i] = replacedString
+				if method == "keyword" {
+
+					if location == "body" {
+						rule = fmt.Sprintf("body=\"%s\"", replacedString)
+					} else if location == "title" {
+						rule = fmt.Sprintf("title=\"%s\"", replacedString)
+					} else if location == "header" {
+						rule = fmt.Sprintf("header=\"%s\"", replacedString)
+					}
+
+				} else if method == "icon_hash" {
+					rule = fmt.Sprintf("icon_hash=\"%s\"", replacedString)
 				}
 
-			} else if method == "icon_hash" {
-				rule = fmt.Sprintf("icon_hash=\"%s\"", strings.Join(keywordSlice, "\",\""))
+				addFinger(name, rule, loginURL) // 调用addFinger函数写入指纹到ARL
+				// fmt.Println(replacedString)
 			}
 
-			addFinger(name, rule, loginURL) // 调用addFinger函数写入指纹到ARL
 		}(finger)
 	}
 	wg.Wait() // 等待所有线程完成
+}
+func exportSite(url string, allIDs []string) {
+	// /api/site/export/?status=200&task_id=
+
+	// 创建信号量
+	semaphore := make(chan struct{}, 3)
+	var wg sync.WaitGroup
+
+	// 获取当前工作目录
+	currentDir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 创建一个文件用于写入结果
+	filePath := currentDir + "/results.txt"
+	file, err := os.Create(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	task_num := 1
+	for _, id := range allIDs {
+		wg.Add(1)
+		go func(id interface{}) {
+			semaphore <- struct{}{} // 获取信号量
+			defer func() {
+				<-semaphore // 释放
+
+				wg.Done() // 完成一个线程
+			}()
+			result_url := fmt.Sprintf("%s/api/site/export/?task_id=%s", url, id)
+			// 创建一个HTTP请求
+			req, err := http.NewRequest("GET", result_url, nil)
+			if err != nil {
+				fmt.Errorf("请求创建失败:", err)
+				return
+			}
+			// 设置请求头
+			for key, value := range headers {
+				req.Header.Set(key, value)
+			}
+			// 发起请求
+			resp, err := client.Do(req)
+			if err != nil {
+				fmt.Errorf("请求失败:", err)
+			}
+
+			// 读取响应体
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Printf("读取body失败 ID %s: %v\n", id, err)
+			}
+
+			// 打印响应体
+			fmt.Printf("[+] 序列号: %d 任务id: %s\n", task_num, id)
+			if len(body) != 0 {
+				// 将结果写入文件
+				if _, err := file.WriteString(fmt.Sprintf("%s", body) + "\n"); err != nil {
+					log.Fatal(err)
+				}
+			}
+			task_num++
+			resp.Body.Close()
+		}(id)
+	}
+
+	wg.Wait()
 }
