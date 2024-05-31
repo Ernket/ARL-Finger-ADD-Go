@@ -3,3 +3,4 @@ arl_config:
   username: xxx
   password: xxx
   threads: 20
+  api_key: 
