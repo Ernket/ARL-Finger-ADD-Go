@@ -13,7 +13,7 @@
 `finger.json`文件和执行程序在同目录即可，同时新增了`config.yaml`配置文件，方便执行
 添加指纹用到的线程数也放在了配置文件里
 ```
-Usage: main [-d|-a]
+Usage: main [-d|-a|-s]
 选项:
   -a	添加finger.json文件中的指纹
   -d	删除所有指纹
