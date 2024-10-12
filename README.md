@@ -22,6 +22,30 @@ Usage: main [-d|-a|-s]
 
 ```
 
+# 指纹文件优化
+在指纹识别的时候发现一个问题，那就是有的指纹误报率极高，发现的逻辑我自己猜想，是因为原先工具会去对keyword里的去组合对比<br>
+但是ARL中没法这么操作（至少我试了and 或者 &这种无法去组合，只能一条规则一个匹配那种）<br>
+所以删除了部分没有特征的指纹，肯定还有很多待发现的，师傅们有的话也可以提issues，目前删除的如下：<br>
+
+| 名称                          | 规则                     |
+| --------------------------- | ---------------------- |
+| 秦川燃气综合管理系统                  | body="login"           |
+| 联软准入                        | body="redirect"        |
+| 时空智友企业信息管理系统存               | body="登录"              |
+| 时空智友企业信息管理系统存               | body="login.jsp?login" |
+| LanProxy                    | body="password"        |
+| VMware vCenter              | body="download"        |
+| 360天堤新一代智慧防火墙               | body="360"             |
+| 天融信防火墙                      | body="username"        |
+| noVNC 远程访问                  | body="host"            |
+| DouPHP                      | body="theme"           |
+| Jupyter                     | body=""                |
+| VMware Workspace ONE Access | body="Assist"          |
+| AceNet 驰崴防火墙                | body="Technology"      |
+| 华天动力OA                      | body="window.location" |
+| 朗拓健康医院管理系统                  | body="js/app."         |
+| 锐捷 RG-EW1200G               | body="/js/app"         |
+
 
 # 结果
 我在自己搭建的arl中运行，结果是`12568`条<br>
