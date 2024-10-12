@@ -61,6 +61,8 @@ Usage: main [-d|-a|-s]
 3.修复了一个[bug](https://github.com/Ernket/ARL-Finger-ADD-Go/issues/2)<br>
 4.更新了-s参数，用来导出任务<br>
 5.为了避免每次使用脚本会退出登录（不允许重复登录），增加了api_key的方式来请求，当apikey存在的时候，默认先用key，如果为空则使用账号密码登录<br>
+- 2024.10.12
+<br>删除了部分无特征的规则，不然误报率极高
 
 # 参考项目
 https://github.com/Funsiooo/chunsou  (finger.json文件)<br>
