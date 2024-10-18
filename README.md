@@ -27,55 +27,7 @@ Usage: main [-d|-a|-s]
 但是ARL中没法这么操作（至少我试了and 或者 &这种无法去组合，只能一条规则一个匹配那种）<br>
 所以删除了部分没有特征的指纹，肯定还有很多待发现的，师傅们有的话也可以提issues，目前删除的如下：<br>
 ~~说真的，他一点都不好用，不如自己导出用工具扫~~<br>
-
-| 名称                          | 规则                     |
-| --------------------------- | ---------------------- |
-| 秦川燃气综合管理系统                  | body="login"           |
-| 联软准入                        | body="redirect"        |
-| 时空智友企业信息管理系统存               | body="登录"              |
-| 时空智友企业信息管理系统存               | body="login.jsp?login" |
-| LanProxy                    | body="password"        |
-| VMware vCenter              | body="download"        |
-| 360天堤新一代智慧防火墙               | body="360"             |
-| 天融信防火墙                      | body="username"        |
-| noVNC 远程访问                  | body="host"            |
-| DouPHP                      | body="theme"           |
-| Jupyter                     | body=""                |
-| VMware Workspace ONE Access | body="Assist"          |
-| AceNet 驰崴防火墙                | body="Technology"      |
-| 华天动力OA                      | body="window.location" |
-| 朗拓健康医院管理系统                  | body="js/app."         |
-| 锐捷 RG-EW1200G               | body="/js/app"         |
-| 思迪数据池管理平台                   | body="Ajax/Login"      |
-| Adobe ColdFusion            | body="cdm"             |
-| 深信服安全感知平台                   | body="login.js"        |
-| 深信服安全感知平台                   | body="apps"            |
-| 网心云设备                       | body="favicon.png"     |
-| Kyan 监控设备                   | body="platform"        |
-| Kyan 监控设备                   | body="欢迎登陆系统"          |
-| Kyan 监控设备                   | body="login_files"     |
-| 阿姆瑞特智能DNS                   | body="DNS"             |
-| H3C ER8300G2-X              | body="dis_login"       |
-| 铭飞 MCMS                     | body="plugins"         |
-| 华域Reporter                  | body="reporter"        |
-| 华域Reporter                  | body="action.php"      |
-| 大华-智能物联综合管理平台               | body="moment"          |
-| 宝塔-BT.cn                    | body="/login"          |
-| 宝塔-BT.cn                    | body="可能原因"            |
-| PB CMS                      | body="Powered by"      |
-| PB CMS                      | body="PB-CMS"          |
-| Igenus邮件系统                  | body="login.php"       |
-| Igenus邮件系统                  | body="language"        |
-| 骑士 74CMS                    | body="index.php"       |
-| ZKTeco 系统                   | body="Copyright ©"     |
-| Canal Admin                 | body="js/app"          |
-| 云信通短信运营管理平台                 | body="短信"              |
-| 大华安防 DSS                    | body="User"            |
-| 群晖 DiskStation              | body="modules"         |
-| IBM HTTP Server             | body="Support"         |
-| IBOS酷办公OA系统                 | body="login-panel"     |
-| IBOS酷办公OA系统                 | body="loginsubmit"     |
-| IBOS酷办公OA系统                 | body="IBOS"            |
+~~删的太多了，原本这里有个表的，懒得写了~~<br>
 
 
 # 结果
