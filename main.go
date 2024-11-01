@@ -50,6 +50,7 @@ var (
 	del_all_finger   = flag.Bool("d", false, "删除所有指纹")
 	add_file_finger  = flag.Bool("a", false, "添加finger.json文件中的指纹")
 	search_task_name = flag.String("s", "", "查询的任务名称")
+	use_old_logic    = flag.Bool("o", false, "使用旧版本的指纹添加逻辑")
 )
 
 // 登录需要用到的头信息
@@ -382,15 +383,16 @@ func createClient() *http.Client {
 	}
 }
 func make_file(loginURL string, thread_num int) {
-	// 创建信号量
 	semaphore := make(chan struct{}, thread_num)
 	var wg sync.WaitGroup
+
 	// 读取JSON文件并解析内容
 	file, err := os.ReadFile("./finger.json")
 	if err != nil {
 		fmt.Println("Error reading JSON file:", err)
 		return
 	}
+
 	// 解析JSON文件
 	var loadDict map[string]interface{}
 	err = json.Unmarshal(file, &loadDict)
@@ -398,55 +400,125 @@ func make_file(loginURL string, thread_num int) {
 		fmt.Println("Error parsing JSON:", err)
 		return
 	}
-	// 根据JSON中的规则添加指纹
-	for _, finger := range loadDict["fingerprint"].([]interface{}) {
-		wg.Add(1) // 增加等待的线程数
-		go func(finger interface{}) {
-			semaphore <- struct{}{} // 获取信号量
-			defer func() {
-				<-semaphore // 释放
-				wg.Done()   // 完成一个线程
-			}()
-			// 处理finger.json中的数据
+
+	if *use_old_logic {
+		fmt.Println("[+] Using old version logic...")
+		// 旧版本逻辑
+		for _, finger := range loadDict["fingerprint"].([]interface{}) {
+			wg.Add(1)
+			go func(finger interface{}) {
+				semaphore <- struct{}{}
+				defer func() {
+					<-semaphore
+					wg.Done()
+				}()
+
+				fingerMap := finger.(map[string]interface{})
+				name := fingerMap["cms"].(string)
+				method := fingerMap["method"].(string)
+				location := fingerMap["location"].(string)
+				keywordInterface := fingerMap["keyword"].([]interface{})
+
+				for _, v := range keywordInterface {
+					replacedString := strings.ReplaceAll(v.(string), "\"", "\\\"")
+					replacedString = strings.ReplaceAll(replacedString, "\n", "\\n")
+					replacedString = strings.ReplaceAll(replacedString, "\t", "\\t")
+
+					var rule string
+					if method == "keyword" {
+						switch location {
+						case "body":
+							rule = fmt.Sprintf("body=\"%s\"", replacedString)
+						case "title":
+							rule = fmt.Sprintf("title=\"%s\"", replacedString)
+						case "header":
+							rule = fmt.Sprintf("header=\"%s\"", replacedString)
+						}
+					} else if method == "icon_hash" {
+						rule = fmt.Sprintf("icon_hash=\"%s\"", replacedString)
+					}
+
+					addFinger(name, rule, loginURL)
+				}
+			}(finger)
+		}
+	} else {
+		fmt.Println("[+] Using new version logic...")
+		// 新版本逻辑
+		cmsLocationRules := make(map[string]map[string][]string) // map[cms名称]map[location][]规则
+
+		// 收集所有规则,按location分组
+		for _, finger := range loadDict["fingerprint"].([]interface{}) {
 			fingerMap := finger.(map[string]interface{})
 			name := fingerMap["cms"].(string)
 			method := fingerMap["method"].(string)
 			location := fingerMap["location"].(string)
 			keywordInterface := fingerMap["keyword"].([]interface{})
-			// keywordSlice := make([]string, len(keywordInterface))
 
-			var rule string
+			if _, exists := cmsLocationRules[name]; !exists {
+				cmsLocationRules[name] = make(map[string][]string)
+			}
+
 			for _, v := range keywordInterface {
 				replacedString := strings.ReplaceAll(v.(string), "\"", "\\\"")
 				replacedString = strings.ReplaceAll(replacedString, "\n", "\\n")
-				replacedString = strings.ReplaceAll(replacedString, "\n", "\\n")
-				replacedString = strings.ReplaceAll(replacedString, "\t", "\\t")
 				replacedString = strings.ReplaceAll(replacedString, "\t", "\\t")
 
-				fmt.Println(replacedString)
-				// keywordSlice[i] = replacedString
+				var rule string
 				if method == "keyword" {
-
-					if location == "body" {
+					switch location {
+					case "body":
 						rule = fmt.Sprintf("body=\"%s\"", replacedString)
-					} else if location == "title" {
+						if _, exists := cmsLocationRules[name]["body"]; !exists {
+							cmsLocationRules[name]["body"] = make([]string, 0)
+						}
+						cmsLocationRules[name]["body"] = append(cmsLocationRules[name]["body"], rule)
+					case "title":
 						rule = fmt.Sprintf("title=\"%s\"", replacedString)
-					} else if location == "header" {
+						if _, exists := cmsLocationRules[name]["title"]; !exists {
+							cmsLocationRules[name]["title"] = make([]string, 0)
+						}
+						cmsLocationRules[name]["title"] = append(cmsLocationRules[name]["title"], rule)
+					case "header":
 						rule = fmt.Sprintf("header=\"%s\"", replacedString)
+						if _, exists := cmsLocationRules[name]["header"]; !exists {
+							cmsLocationRules[name]["header"] = make([]string, 0)
+						}
+						cmsLocationRules[name]["header"] = append(cmsLocationRules[name]["header"], rule)
 					}
-
 				} else if method == "icon_hash" {
 					rule = fmt.Sprintf("icon_hash=\"%s\"", replacedString)
+					if _, exists := cmsLocationRules[name]["icon_hash"]; !exists {
+						cmsLocationRules[name]["icon_hash"] = make([]string, 0)
+					}
+					cmsLocationRules[name]["icon_hash"] = append(cmsLocationRules[name]["icon_hash"], rule)
 				}
-
-				addFinger(name, rule, loginURL) // 调用addFinger函数写入指纹到ARL
-				// fmt.Println(replacedString)
 			}
+		}
 
-		}(finger)
+		// 对每个location的规则分别处理
+		for name, locationRules := range cmsLocationRules {
+			for location, rules := range locationRules {
+				wg.Add(1)
+				go func(name, location string, rules []string) {
+					semaphore <- struct{}{}
+					defer func() {
+						<-semaphore
+						wg.Done()
+					}()
+
+					// 同一个location的规则用&&连接
+					combinedRule := strings.Join(rules, " && ")
+					addFinger(name+"_"+location, combinedRule, loginURL)
+					fmt.Printf("Added %s rule for %s: %s\n", location, name, combinedRule)
+				}(name, location, rules)
+			}
+		}
 	}
-	wg.Wait() // 等待所有线程完成
+
+	wg.Wait()
 }
+
 func exportSite(url string, allIDs []string) {
 	// /api/site/export/?status=200&task_id=
 
