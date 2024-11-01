@@ -1,5 +1,5 @@
 # 前言
-在github上看到某个师傅，这种脚本都要单独拿来卖钱属实是没想到，刚好最近在写新的自动化框架，拿go练练手，所以这个项目只是写来先“测试”用的<br>
+在github上看到某个师傅，这种脚本都要单独拿来卖钱属实是没想到，这就好像你开心的从商店的免费游戏专栏中下载了一个有意思的游戏，玩了一关后告诉你后续章节要内购解锁，简直就是拉了坨大的<br>
 有能力的师傅们也可以自己修修改改，毕竟25也能吃顿好的了，不至于浪费钱<br>
 （PS：各位师傅在用的时候如果有任何bug或者建议都欢迎反馈）
 ![](https://github.com/Ernket/ARL-Finger-ADD-Go/blob/48087cc2de0d65fa72e6a2d81beeeed329140f66/png/1.png)
@@ -65,4 +65,4 @@ not_op = CaselessLiteral("!")
 
 # 参考项目
 https://github.com/Funsiooo/chunsou  (finger.json文件)<br>
-https://github.com/loecho-sec/ARL-Finger-ADD
+https://github.com/loecho-sec/ARL-Finger-ADD （旧版arl逻辑）
